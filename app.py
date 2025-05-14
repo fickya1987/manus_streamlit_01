@@ -4,8 +4,12 @@ import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
 from sklearn.linear_model import LinearRegression
-from scipy import stats # Import stats for zscore
+from scipy import stats
 
+# Set page config as the absolute first Streamlit command
+st.set_page_config(layout="wide")
+
+# Define functions AFTER st.set_page_config()
 # Load and cache data
 @st.cache_data
 def load_data(file_path):
@@ -23,10 +27,12 @@ def load_data(file_path):
             df['SKOR PENCAPAIAN'] = np.where(df['TARGET TW TERKAIT'] != 0, (df['REALISASI TW TERKAIT'] / df['TARGET TW TERKAIT']) * 100, 0)
         return df
     except FileNotFoundError:
-        st.error(f"File not found: {file_path}. Please ensure the file is uploaded correctly.")
+        # Use st.error only after set_page_config has been called.
+        # For initial load, this error will be caught and handled before Streamlit elements are rendered if df_kpi is empty.
+        print(f"Error: File not found: {file_path}") # Log to console
         return pd.DataFrame()
     except Exception as e:
-        st.error(f"Error loading data: {e}")
+        print(f"Error loading data: {e}") # Log to console
         return pd.DataFrame()
 
 # Generate synthetic historical data for prediction demonstration
@@ -57,108 +63,114 @@ def generate_synthetic_history(df_current, kpi_name_col='NAMA KPI', value_col='R
         return pd.DataFrame()
     return pd.concat(df_hist_all, ignore_index=True)
 
-DATA_FILE_PATH = '/home/ubuntu/upload/kpi_cleaned.csv'
+# Main application logic starts here
+DATA_FILE_PATH = '/home/ubuntu/kpi_app/upload/kpi_cleaned.csv'
 df_kpi = load_data(DATA_FILE_PATH)
-df_kpi_history = generate_synthetic_history(df_kpi)
-
-st.set_page_config(layout="wide")
-st.title("Aplikasi Analisis dan Prediksi Kinerja KPI")
-
-st.sidebar.title("Navigasi Fitur")
-app_mode = st.sidebar.selectbox(
-    "Pilih Fitur:",
-    ["Dasbor Kinerja KPI", "Prediksi Kinerja KPI", "Deteksi Anomali KPI"]
-)
 
 if df_kpi.empty:
-    st.warning("Data KPI tidak dapat dimuat. Beberapa fitur mungkin tidak berfungsi.")
+    st.error(f"Gagal memuat data dari {DATA_FILE_PATH}. Pastikan file ada dan path sudah benar. Aplikasi tidak dapat berjalan tanpa data.")
+    # Optionally, prevent further execution if data loading fails critically
+    # st.stop()
 else:
+    df_kpi_history = generate_synthetic_history(df_kpi)
+
+    st.title("Aplikasi Analisis dan Prediksi Kinerja KPI")
+
+    st.sidebar.title("Navigasi Fitur")
+    app_mode = st.sidebar.selectbox(
+        "Pilih Fitur:",
+        ["Dasbor Kinerja KPI", "Prediksi Kinerja KPI", "Deteksi Anomali KPI"]
+    )
+
     if app_mode == "Dasbor Kinerja KPI":
         st.header("Dasbor Kinerja KPI Interaktif")
-        st.sidebar.header("Filter Data Dasbor")
-        unique_posisi = df_kpi["POSISI PEKERJA"].unique()
-        selected_posisi = st.sidebar.multiselect(
-            "Pilih Posisi Pekerja:",
-            options=unique_posisi,
-            default=unique_posisi[:3] if len(unique_posisi) > 3 else unique_posisi
-        )
-        unique_kpi_nama = df_kpi["NAMA KPI"].unique()
-        selected_kpi_nama = st.sidebar.multiselect(
-            "Pilih Nama KPI:",
-            options=unique_kpi_nama,
-            default=unique_kpi_nama[:3] if len(unique_kpi_nama) > 3 else unique_kpi_nama
-        )
-        unique_perusahaan = df_kpi["PERUSAHAAN"].unique()
-        selected_perusahaan = st.sidebar.multiselect(
-            "Pilih Perusahaan:",
-            options=unique_perusahaan,
-            default=unique_perusahaan
-        )
-
-        df_filtered = df_kpi[
-            df_kpi["POSISI PEKERJA"].isin(selected_posisi) &
-            df_kpi["NAMA KPI"].isin(selected_kpi_nama) &
-            df_kpi["PERUSAHAAN"].isin(selected_perusahaan)
-        ]
-
-        if df_filtered.empty:
-            st.warning("Tidak ada data yang cocok dengan filter yang dipilih.")
+        if df_kpi.empty: # Check again in case it became empty after initial load attempt
+            st.warning("Data KPI tidak dapat dimuat. Fitur Dasbor tidak tersedia.")
         else:
-            st.subheader("Ringkasan Data KPI Terfilter")
-            col1, col2, col3 = st.columns(3)
-            total_kpis = df_filtered.shape[0]
-            avg_realisasi = df_filtered["REALISASI TW TERKAIT"].mean()
-            avg_target = df_filtered["TARGET TW TERKAIT"].mean()
-            avg_pencapaian = 0
-            if 'SKOR PENCAPAIAN' in df_filtered.columns:
-                 avg_pencapaian = df_filtered["SKOR PENCAPAIAN"].mean()
+            st.sidebar.header("Filter Data Dasbor")
+            unique_posisi = df_kpi["POSISI PEKERJA"].unique()
+            selected_posisi = st.sidebar.multiselect(
+                "Pilih Posisi Pekerja:",
+                options=unique_posisi,
+                default=list(unique_posisi[:3]) if len(unique_posisi) > 3 else list(unique_posisi)
+            )
+            unique_kpi_nama = df_kpi["NAMA KPI"].unique()
+            selected_kpi_nama = st.sidebar.multiselect(
+                "Pilih Nama KPI:",
+                options=unique_kpi_nama,
+                default=list(unique_kpi_nama[:3]) if len(unique_kpi_nama) > 3 else list(unique_kpi_nama)
+            )
+            unique_perusahaan = df_kpi["PERUSAHAAN"].unique()
+            selected_perusahaan = st.sidebar.multiselect(
+                "Pilih Perusahaan:",
+                options=unique_perusahaan,
+                default=list(unique_perusahaan)
+            )
 
-            with col1:
-                st.metric(label="Total KPI Terfilter", value=total_kpis)
-            with col2:
-                st.metric(label="Rata-rata Realisasi", value=f"{avg_realisasi:.2f}")
-            with col3:
-                st.metric(label="Rata-rata Target", value=f"{avg_target:.2f}")
-            if 'SKOR PENCAPAIAN' in df_filtered.columns:
-                st.metric(label="Rata-rata Skor Pencapaian (%)", value=f"{avg_pencapaian:.2f}%")
+            df_filtered = df_kpi[
+                df_kpi["POSISI PEKERJA"].isin(selected_posisi) &
+                df_kpi["NAMA KPI"].isin(selected_kpi_nama) &
+                df_kpi["PERUSAHAAN"].isin(selected_perusahaan)
+            ]
 
-            st.subheader("Data KPI Terfilter")
-            st.dataframe(df_filtered)
-
-            st.subheader("Visualisasi Kinerja KPI")
-            st.write("Perbandingan Realisasi vs Target untuk KPI Terpilih (Top 10 berdasarkan Target)")
-            df_plot_bar = df_filtered.nlargest(10, 'TARGET TW TERKAIT')
-            if not df_plot_bar.empty:
-                fig_bar, ax_bar = plt.subplots(figsize=(12, 6))
-                index = np.arange(len(df_plot_bar["NAMA KPI"]))
-                bar_width = 0.35
-                rects1 = ax_bar.bar(index - bar_width/2, df_plot_bar["TARGET TW TERKAIT"], bar_width, label='Target')
-                rects2 = ax_bar.bar(index + bar_width/2, df_plot_bar["REALISASI TW TERKAIT"], bar_width, label='Realisasi')
-                ax_bar.set_xlabel("Nama KPI")
-                ax_bar.set_ylabel("Nilai")
-                ax_bar.set_title("Realisasi vs Target KPI")
-                ax_bar.set_xticks(index)
-                ax_bar.set_xticklabels(df_plot_bar["NAMA KPI"], rotation=45, ha="right")
-                ax_bar.legend()
-                st.pyplot(fig_bar)
+            if df_filtered.empty:
+                st.warning("Tidak ada data yang cocok dengan filter yang dipilih.")
             else:
-                st.write("Tidak cukup data untuk menampilkan grafik perbandingan.")
+                st.subheader("Ringkasan Data KPI Terfilter")
+                col1, col2, col3 = st.columns(3)
+                total_kpis = df_filtered.shape[0]
+                avg_realisasi = df_filtered["REALISASI TW TERKAIT"].mean()
+                avg_target = df_filtered["TARGET TW TERKAIT"].mean()
+                avg_pencapaian = 0
+                if 'SKOR PENCAPAIAN' in df_filtered.columns:
+                    avg_pencapaian = df_filtered["SKOR PENCAPAIAN"].mean()
 
-            if 'SKOR PENCAPAIAN' in df_filtered.columns:
-                st.write("Distribusi Skor Pencapaian KPI")
-                fig_hist, ax_hist = plt.subplots()
-                sns.histplot(df_filtered["SKOR PENCAPAIAN"], kde=True, ax=ax_hist, bins=15)
-                ax_hist.set_title("Distribusi Skor Pencapaian")
-                ax_hist.set_xlabel("Skor Pencapaian (%)")
-                ax_hist.set_ylabel("Frekuensi")
-                st.pyplot(fig_hist)
-            else:
-                st.write("Kolom 'SKOR PENCAPAIAN' tidak ditemukan untuk membuat histogram.")
+                with col1:
+                    st.metric(label="Total KPI Terfilter", value=total_kpis)
+                with col2:
+                    st.metric(label="Rata-rata Realisasi", value=f"{avg_realisasi:.2f}")
+                with col3:
+                    st.metric(label="Rata-rata Target", value=f"{avg_target:.2f}")
+                if 'SKOR PENCAPAIAN' in df_filtered.columns:
+                    st.metric(label="Rata-rata Skor Pencapaian (%)", value=f"{avg_pencapaian:.2f}%")
+
+                st.subheader("Data KPI Terfilter")
+                st.dataframe(df_filtered)
+
+                st.subheader("Visualisasi Kinerja KPI")
+                st.write("Perbandingan Realisasi vs Target untuk KPI Terpilih (Top 10 berdasarkan Target)")
+                df_plot_bar = df_filtered.nlargest(10, 'TARGET TW TERKAIT')
+                if not df_plot_bar.empty:
+                    fig_bar, ax_bar = plt.subplots(figsize=(12, 6))
+                    index = np.arange(len(df_plot_bar["NAMA KPI"]))
+                    bar_width = 0.35
+                    rects1 = ax_bar.bar(index - bar_width/2, df_plot_bar["TARGET TW TERKAIT"], bar_width, label='Target')
+                    rects2 = ax_bar.bar(index + bar_width/2, df_plot_bar["REALISASI TW TERKAIT"], bar_width, label='Realisasi')
+                    ax_bar.set_xlabel("Nama KPI")
+                    ax_bar.set_ylabel("Nilai")
+                    ax_bar.set_title("Realisasi vs Target KPI")
+                    ax_bar.set_xticks(index)
+                    ax_bar.set_xticklabels(df_plot_bar["NAMA KPI"], rotation=45, ha="right")
+                    ax_bar.legend()
+                    st.pyplot(fig_bar)
+                else:
+                    st.write("Tidak cukup data untuk menampilkan grafik perbandingan.")
+
+                if 'SKOR PENCAPAIAN' in df_filtered.columns:
+                    st.write("Distribusi Skor Pencapaian KPI")
+                    fig_hist, ax_hist = plt.subplots()
+                    sns.histplot(df_filtered["SKOR PENCAPAIAN"], kde=True, ax=ax_hist, bins=15)
+                    ax_hist.set_title("Distribusi Skor Pencapaian")
+                    ax_hist.set_xlabel("Skor Pencapaian (%)")
+                    ax_hist.set_ylabel("Frekuensi")
+                    st.pyplot(fig_hist)
+                else:
+                    st.write("Kolom 'SKOR PENCAPAIAN' tidak ditemukan untuk membuat histogram.")
 
     elif app_mode == "Prediksi Kinerja KPI":
         st.header("Prediksi Kinerja KPI")
-        if df_kpi_history.empty:
-            st.warning("Data historis sintetis tidak dapat dibuat. Fitur prediksi tidak tersedia.")
+        if df_kpi.empty or df_kpi_history.empty:
+            st.warning("Data KPI tidak dapat dimuat atau data historis sintetis tidak dapat dibuat. Fitur prediksi tidak tersedia.")
         else:
             st.sidebar.header("Filter Data Prediksi")
             kpi_options_pred = sorted(df_kpi_history['NAMA KPI'].unique())
@@ -203,44 +215,55 @@ else:
 
     elif app_mode == "Deteksi Anomali KPI":
         st.header("Deteksi Anomali KPI")
-        st.sidebar.header("Pengaturan Deteksi Anomali")
-        
-        # Select column for anomaly detection
-        anomaly_column_options = ['REALISASI TW TERKAIT', 'SKOR PENCAPAIAN']
-        if 'SKOR PENCAPAIAN' not in df_kpi.columns:
-            anomaly_column_options = ['REALISASI TW TERKAIT']
-            
-        selected_anomaly_col = st.sidebar.selectbox(
-            "Pilih Kolom untuk Deteksi Anomali:", 
-            anomaly_column_options,
-            key='anomaly_col_select'
-        )
-        
-        z_threshold = st.sidebar.slider("Threshold Z-score untuk Anomali:", 1.0, 4.0, 3.0, 0.1, key='z_thresh_slider')
-
-        if selected_anomaly_col:
-            st.subheader(f"Deteksi Anomali pada Kolom: {selected_anomaly_col}")
-            # Make a copy to avoid SettingWithCopyWarning
-            df_anomaly_check = df_kpi.copy()
-            df_anomaly_check['Z_SCORE'] = np.abs(stats.zscore(df_anomaly_check[selected_anomaly_col]))
-            df_anomalies = df_anomaly_check[df_anomaly_check['Z_SCORE'] > z_threshold]
-
-            if df_anomalies.empty:
-                st.success(f"Tidak ditemukan anomali signifikan pada kolom '{selected_anomaly_col}' dengan threshold Z-score > {z_threshold}.")
-            else:
-                st.warning(f"Ditemukan {len(df_anomalies)} anomali pada kolom '{selected_anomaly_col}' dengan threshold Z-score > {z_threshold}:")
-                st.dataframe(df_anomalies[['NIPP PEKERJA', 'POSISI PEKERJA', 'NAMA KPI', selected_anomaly_col, 'Z_SCORE']])
-
-                # Visualization of anomalies
-                st.write(f"Visualisasi Distribusi {selected_anomaly_col} dengan Anomali Teridentifikasi")
-                fig_anomaly, ax_anomaly = plt.subplots(figsize=(10, 6))
-                sns.histplot(df_anomaly_check[selected_anomaly_col], ax=ax_anomaly, kde=True, label='Distribusi Normal', color='blue')
-                sns.scatterplot(data=df_anomalies, x=selected_anomaly_col, y=[0]*len(df_anomalies), color='red', s=100, label=f'Anomali (Z > {z_threshold})', ax=ax_anomaly)
-                ax_anomaly.set_title(f"Distribusi {selected_anomaly_col} dan Anomali")
-                ax_anomaly.set_xlabel(selected_anomaly_col)
-                ax_anomaly.set_ylabel("Frekuensi / Densitas")
-                ax_anomaly.legend()
-                st.pyplot(fig_anomaly)
+        if df_kpi.empty:
+            st.warning("Data KPI tidak dapat dimuat. Fitur Deteksi Anomali tidak tersedia.")
         else:
-            st.write("Silakan pilih kolom dari sidebar untuk melakukan deteksi anomali.")
+            st.sidebar.header("Pengaturan Deteksi Anomali")
+            
+            anomaly_column_options = ['REALISASI TW TERKAIT']
+            if 'SKOR PENCAPAIAN' in df_kpi.columns:
+                anomaly_column_options.append('SKOR PENCAPAIAN')
+                
+            selected_anomaly_col = st.sidebar.selectbox(
+                "Pilih Kolom untuk Deteksi Anomali:", 
+                anomaly_column_options,
+                key='anomaly_col_select'
+            )
+            
+            z_threshold = st.sidebar.slider("Threshold Z-score untuk Anomali:", 1.0, 4.0, 3.0, 0.1, key='z_thresh_slider')
+
+            if selected_anomaly_col:
+                st.subheader(f"Deteksi Anomali pada Kolom: {selected_anomaly_col}")
+                df_anomaly_check = df_kpi.copy()
+                if df_anomaly_check[selected_anomaly_col].isnull().any():
+                    st.warning(f"Kolom '{selected_anomaly_col}' mengandung nilai NaN. Anomali tidak dapat dihitung dengan akurat. Harap periksa data Anda.")
+                else:
+                    df_anomaly_check['Z_SCORE'] = np.abs(stats.zscore(df_anomaly_check[selected_anomaly_col]))
+                    df_anomalies = df_anomaly_check[df_anomaly_check['Z_SCORE'] > z_threshold]
+
+                    if df_anomalies.empty:
+                        st.success(f"Tidak ditemukan anomali signifikan pada kolom '{selected_anomaly_col}' dengan threshold Z-score > {z_threshold}.")
+                    else:
+                        st.warning(f"Ditemukan {len(df_anomalies)} anomali pada kolom '{selected_anomaly_col}' dengan threshold Z-score > {z_threshold}:")
+                        st.dataframe(df_anomalies[['NIPP PEKERJA', 'POSISI PEKERJA', 'NAMA KPI', selected_anomaly_col, 'Z_SCORE']])
+
+                        st.write(f"Visualisasi Distribusi {selected_anomaly_col} dengan Anomali Teridentifikasi")
+                        fig_anomaly, ax_anomaly = plt.subplots(figsize=(10, 6))
+                        sns.histplot(df_anomaly_check[selected_anomaly_col], ax=ax_anomaly, kde=True, label='Distribusi Normal', color='blue')
+                        
+                        y_scatter_values = np.zeros(len(df_anomalies))
+                        if not df_anomaly_check[selected_anomaly_col].empty:
+                            if ax_anomaly.get_ylim()[1] > 0:
+                                y_scatter_values = np.full(len(df_anomalies), ax_anomaly.get_ylim()[1] * 0.01)
+
+                        sns.scatterplot(data=df_anomalies, x=selected_anomaly_col, y=y_scatter_values, color='red', s=100, label=f'Anomali (Z > {z_threshold})', ax=ax_anomaly, zorder=5)
+                        ax_anomaly.set_title(f"Distribusi {selected_anomaly_col} dan Anomali")
+                        ax_anomaly.set_xlabel(selected_anomaly_col)
+                        ax_anomaly.set_ylabel("Frekuensi / Densitas")
+                        ax_anomaly.legend()
+                        st.pyplot(fig_anomaly)
+            else:
+                st.write("Silakan pilih kolom dari sidebar untuk melakukan deteksi anomali.")
+
+
 
