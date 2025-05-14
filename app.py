@@ -64,7 +64,7 @@ def generate_synthetic_history(df_current, kpi_name_col='NAMA KPI', value_col='R
     return pd.concat(df_hist_all, ignore_index=True)
 
 # Main application logic starts here
-DATA_FILE_PATH = '/home/ubuntu/kpi_app/upload/kpi_cleaned.csv'
+DATA_FILE_PATH = 'kpi_cleaned.csv'
 df_kpi = load_data(DATA_FILE_PATH)
 
 if df_kpi.empty:
